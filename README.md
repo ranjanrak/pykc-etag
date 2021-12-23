@@ -5,18 +5,18 @@
 git clone https://github.com/ranjanrak/async-ticker.git
 ```
 ## Concept
-Store Etag value(as dictionary) in the user's home directory `os.path.join(os.getenv("HOME"), ".pykiteconnect")` into `etag.json`.<br> 
+Store Etag value(as key:value pair) in the user's home directory `os.path.join(os.getenv("HOME"), ".pykiteconnect")` into `etag` using [dbm module](https://docs.python.org/3/library/dbm.html).<br>
 Add `If-None-Match` header for all `GET` request, if etag value for request url is present in `etag.json`.</br> 
-Update `etag.json` for required request url, when none 304 http status is received.
+Update `etag` for required request url, when none 304 http status is received.
 
-Sample output of : `$HOME/.pykiteconnect/etag.json`
+Sample output of : `$HOME/.pykiteconnect/etag`
 ```
-{"https://api.kite.trade/orders": {"etag": "W/\"i51p01GqP6TRPWsM\""}, 
-"https://api.kite.trade/instruments": {"etag": "\"e33d497fcc6035e90fe24497955cc377\""}, 
-"https://api.kite.trade/portfolio/positions": {"etag": "W/\"RWcYE7s6OQ2jiFp4\""}, 
-"https://api.kite.trade/portfolio/holdings": {"etag": "W/\"7y6jV8XreUgYpPdQ\""},
-"https://api.kite.trade/user/margins": {"etag": "W/\"XLP3pyD5k0OVIlcO\""}, 
-"https://api.kite.trade/trades": {"etag": "W/\"i51p01GqP6TRPWsM\""}}
+{"https://api.kite.trade/orders": "W/\"i51p01GqP6TRPWsM\"", 
+"https://api.kite.trade/instruments": "\"e33d497fcc6035e90fe24497955cc377\"", 
+"https://api.kite.trade/portfolio/positions": "W/\"RWcYE7s6OQ2jiFp4\"", 
+"https://api.kite.trade/portfolio/holdings": "W/\"7y6jV8XreUgYpPdQ\"",
+"https://api.kite.trade/user/margins": "W/\"XLP3pyD5k0OVIlcO\"", 
+"https://api.kite.trade/trades": "W/\"i51p01GqP6TRPWsM\""}
 ```
 Sample `GET` request header with `If-None-Match`:
 ```

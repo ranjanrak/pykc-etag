@@ -17,6 +17,7 @@ import logging
 import datetime
 import requests
 import os
+import dbm
 
 from .__version__ import __version__, __title__
 import kiteconnect.exceptions as ex
@@ -866,14 +867,11 @@ class KiteConnect(object):
         }
 
         dir_path = os.path.join(os.getenv("HOME"), ".pykiteconnect")
-        file_path = os.path.join(dir_path, "etag.json")
+        file_path = os.path.join(dir_path, "etag")
         # Add Etag header for GET request
         if method == 'GET' and os.path.exists(file_path):
-            with open(file_path, 'r') as json_file:
-                etag_json = json.load(json_file)
-                for k, v in etag_json.items():
-                    if k == url:
-                        headers["If-None-Match"] = v['etag']
+            with dbm.open(file_path, 'r') as db:
+                headers["If-None-Match"] = db.get(url)
             
         if self.api_key and self.access_token:
             # set authorization header
@@ -907,34 +905,19 @@ class KiteConnect(object):
 
         # Store Etag data to user's home directory
         if "Etag" in r.headers:
-            etag_dict = {}
-            # store etag value url wise
-            etag_dict[url] = {'etag':r.headers["Etag"]}
 
             # Create client directory if it doesn't exists
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
 
-            # Create json file if it doesn't exists
+            # Create etag file if it doesn't exists
             if not os.path.exists(file_path):
-                with open(file_path, 'w') as f:
-                    json.dump(etag_dict, f)
+                with dbm.open(file_path, 'c') as db:
+                    db[url] = r.headers["Etag"]
             else:
-                with open(file_path, 'r+') as json_file:
-                    etag_json = json.load(json_file)
-                    for k, v in etag_json.items():
-                        # Update etag value for required url 
-                        if k == url and v['etag'] != r.headers["Etag"]:
-                            etag_json[k] = etag_dict[url]
-                    # Append new url
-                    if url not in etag_json.keys():
-                        etag_json[url] = etag_dict[url]
-                    # rewind
-                    json_file.seek(0)
-                    # Update the json file
-                    json.dump(etag_json, json_file)
-                    json_file.truncate()
-                    json_file.close()
+                with dbm.open(file_path, 'w') as db:
+                    # Update and add the Etag value
+                    db[url] = r.headers["Etag"]
 
         # Validate the content type.
         if "json" in r.headers["content-type"]:
@@ -961,3 +944,4 @@ class KiteConnect(object):
             raise ex.DataException("Unknown Content-Type ({content_type}) with response: ({content})".format(
                 content_type=r.headers["content-type"],
                 content=r.content))
+                
