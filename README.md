@@ -5,19 +5,11 @@
 git clone https://github.com/ranjanrak/async-ticker.git
 ```
 ## Concept
-Store Etag value(as key:value pair) in the user's home directory `os.path.join(os.getenv("HOME"), ".pykiteconnect")` into `etag` using [dbm module](https://docs.python.org/3/library/dbm.html).<br>
+Store Etag value(as hash key:value pair) in the user's home directory `os.path.join(os.getenv("HOME"), ".pykiteconnect")` into `etag` and cache value into `cache` file.<br>
 Add `If-None-Match` header for all `GET` request, if etag value for request url is present in `etag.json`.</br> 
-Update `etag` for required request url, when none 304 http status is received.
+Update `etag` and `cache` for required request url, when none 304 http status is received.</br> 
+Refer [code here](https://github.com/ranjanrak/pykc-etag/blob/main/connect.py#L847) for cache storage mechanism. Refer cache validation [code here](https://github.com/ranjanrak/pykc-etag/blob/main/connect.py#L945). 
 
-Sample output of : `$HOME/.pykiteconnect/etag`
-```
-{"https://api.kite.trade/orders": "W/\"i51p01GqP6TRPWsM\"", 
-"https://api.kite.trade/instruments": "\"e33d497fcc6035e90fe24497955cc377\"", 
-"https://api.kite.trade/portfolio/positions": "W/\"RWcYE7s6OQ2jiFp4\"", 
-"https://api.kite.trade/portfolio/holdings": "W/\"7y6jV8XreUgYpPdQ\"",
-"https://api.kite.trade/user/margins": "W/\"XLP3pyD5k0OVIlcO\"", 
-"https://api.kite.trade/trades": "W/\"i51p01GqP6TRPWsM\""}
-```
 Sample `GET` request header with `If-None-Match`:
 ```
 {'X-Kite-Version': '3', 'User-Agent': 'Kiteconnect-python/3.9.4', 
@@ -45,15 +37,19 @@ kite = KiteConnect(api_key="your_api_key")
 data = kite.generate_session("request_token_here", api_secret="your_secret")
 kite.set_access_token(data["access_token"])
 
-# Fetch all orders
-kite.orders()
-
-# Fetch positions
-kite.positions()
+# Fetch holdings
+kite.holdings()
 ```
 
 ## Response
 
 ```
-DEBUG:urllib3.connectionpool:https://api.kite.trade:443 "GET /portfolio/positions HTTP/1.1" 304 0
+DEBUG:urllib3.connectionpool:https://api.kite.trade:443 "GET /portfolio/holdings HTTP/1.1" 304 0
+
+{'tradingsymbol': 'APOLLOPIPE', 'exchange': 'NSE', 'instrument_token': 3676417, 'isin': 'INE126J01016',
+ 'product': 'CNC', 'price': 0, 'quantity': 3, 'used_quantity': 0, 't1_quantity': 0, 'realised_quantity': 3,
+ 'authorised_quantity': 0, 'authorised_date': '2021-12-28 00:00:00', 'opening_quantity': 3, 'short_quantity': 
+ 0, 'collateral_quantity': 0, 'collateral_type': '', 'discrepancy': False, 'average_price': 582.666667, 
+ 'last_price': 539.8, 'close_price': 539.65, 'pnl': -128.60000100000002, 'day_change': 0.14999999999997726, 
+ 'day_change_percentage': 0.027795793569902208} .....
 ```
