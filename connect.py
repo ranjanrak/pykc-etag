@@ -38,6 +38,11 @@ class KiteConnect(object):
     _default_login_uri = "https://kite.trade/connect/login"
     _default_timeout = 7  # In seconds
 
+    # Default cache location
+    _dir_path = os.path.join(os.getenv("HOME"), ".pykiteconnect")
+    _etag_path = os.path.join(_dir_path, "etag")
+    _cache_path = os.path.join(_dir_path, "cache")
+
     # Constants
     # Products
     PRODUCT_MIS = "MIS"
@@ -831,6 +836,27 @@ class KiteConnect(object):
 
         return records
 
+    def _user_cache(self, url):
+        """ Return cache data """
+        with dbm.open(self._cache_path, 'r') as db:
+            byte_response = db.get(url)
+        # Loads back to json
+        json_data = json.loads(byte_response)
+        return json_data
+
+    def _update_cache(self, response):
+        """ Create/update cache data """
+        # Decode and convert byte to string for all json return data
+        # Decode and keep all csv return data in byte i.e for instruments files
+        data = response.content.decode("utf-8")
+
+        if "json" in response.headers["content-type"]:
+            data = json.loads(data)["data"]
+        response_byte = json.dumps(data)
+
+        with dbm.open(self._cache_path, 'c') as db:
+            db[response.url] = response_byte
+
     def _user_agent(self):
         return (__title__ + "-python/").capitalize() + __version__
 
@@ -866,11 +892,9 @@ class KiteConnect(object):
             "User-Agent": self._user_agent()
         }
 
-        dir_path = os.path.join(os.getenv("HOME"), ".pykiteconnect")
-        file_path = os.path.join(dir_path, "etag")
         # Add Etag header for GET request
-        if method == 'GET' and os.path.exists(file_path):
-            with dbm.open(file_path, 'r') as db:
+        if method == 'GET' and os.path.exists(self._etag_path):
+            with dbm.open(self._etag_path, 'r') as db:
                 headers["If-None-Match"] = db.get(url)
             
         if self.api_key and self.access_token:
@@ -905,43 +929,50 @@ class KiteConnect(object):
 
         # Store Etag data to user's home directory
         if "Etag" in r.headers:
-
             # Create client directory if it doesn't exists
-            if not os.path.exists(dir_path):
-                os.makedirs(dir_path)
+            if not os.path.exists(self._dir_path):
+                os.makedirs(self._dir_path)
 
             # Create etag file if it doesn't exists
-            if not os.path.exists(file_path):
-                with dbm.open(file_path, 'c') as db:
+            if not os.path.exists(self._etag_path):
+                with dbm.open(self._etag_path, 'c') as db:
                     db[url] = r.headers["Etag"]
             else:
-                with dbm.open(file_path, 'w') as db:
+                with dbm.open(self._etag_path, 'w') as db:
                     # Update and add the Etag value
                     db[url] = r.headers["Etag"]
 
-        # Validate the content type.
-        if "json" in r.headers["content-type"]:
-            try:
-                data = json.loads(r.content.decode("utf8"))
-            except ValueError:
-                raise ex.DataException("Couldn't parse the JSON response received from the server: {content}".format(
-                    content=r.content))
-
-            # api error
-            if data.get("status") == "error" or data.get("error_type"):
-                # Call session hook if its registered and TokenException is raised
-                if self.session_expiry_hook and r.status_code == 403 and data["error_type"] == "TokenException":
-                    self.session_expiry_hook()
-
-                # native Kite errors
-                exp = getattr(ex, data.get("error_type"), ex.GeneralException)
-                raise exp(data["message"], code=r.status_code)
-
-            return data["data"]
-        elif "csv" in r.headers["content-type"]:
-            return r.content
+        # Validate the status code
+        if r.status_code == 304:
+            return self._user_cache(r.url)
         else:
-            raise ex.DataException("Unknown Content-Type ({content_type}) with response: ({content})".format(
-                content_type=r.headers["content-type"],
-                content=r.content))
+            # Validate the content type
+            if "json" in r.headers["content-type"]:
+                try:
+                    data = json.loads(r.content.decode("utf8"))
+                    # update/create cache 
+                    self._update_cache(r)
+                except ValueError:
+                    raise ex.DataException("Couldn't parse the JSON response received from the server: {content}".format(
+                        content=r.content))
+
+                # api error
+                if data.get("status") == "error" or data.get("error_type"):
+                    # Call session hook if its registered and TokenException is raised
+                    if self.session_expiry_hook and r.status_code == 403 and data["error_type"] == "TokenException":
+                        self.session_expiry_hook()
+
+                    # native Kite errors
+                    exp = getattr(ex, data.get("error_type"), ex.GeneralException)
+                    raise exp(data["message"], code=r.status_code)
+
+                return data["data"]
+            elif "csv" in r.headers["content-type"]:
+                # update cache
+                self._update_cache(r)
+                return r.content
+            else:
+                raise ex.DataException("Unknown Content-Type ({content_type}) with response: ({content})".format(
+                    content_type=r.headers["content-type"],
+                    content=r.content))
                 
